@@ -415,7 +415,7 @@ export const resolvers = {
     },
 
     async demoRequests(_: unknown, { limit }: { limit?: number | null }) {
-      requireRole("admin");
+      requireRole("super_admin");
       const data = await hasura(
         `query DemoRequests($limit: Int!) {
            demo_requests(order_by: { created_at: desc }, limit: $limit) {
@@ -744,18 +744,25 @@ export const resolvers = {
 
     async updateCompanySettings(
       _: unknown,
-      { name, aliases }: { name: string; aliases: string[] },
+      { name, aliases, digestEmails }: { name: string; aliases: string[]; digestEmails?: string[] | null },
     ) {
       requireRole("admin");
       const clean = String(name ?? "").trim();
       const cleanAliases = (aliases ?? []).map((a) => String(a).trim()).filter(Boolean);
+      const set: Record<string, unknown> = { name: clean, aliases: cleanAliases };
+      if (digestEmails) {
+        const emails = digestEmails.map((e) => String(e).trim().toLowerCase()).filter(Boolean);
+        const bad = emails.find((e) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+        if (bad) throw new Error(`"${bad}" is not a valid email address`);
+        set.digest_emails = emails;
+      }
       const data = await hasura(
-        `mutation SetCompany($id: uuid!, $name: String!, $aliases: [String!]!) {
-           update_companies_by_pk(pk_columns: { id: $id }, _set: { name: $name, aliases: $aliases }) {
+        `mutation SetCompany($id: uuid!, $set: companies_set_input!) {
+           update_companies_by_pk(pk_columns: { id: $id }, _set: $set) {
              ${COMPANY_SEL}
            }
          }`,
-        { id: requireCompanyId(), name: clean, aliases: cleanAliases },
+        { id: requireCompanyId(), set },
       );
       return mapCompanySettings(data.update_companies_by_pk);
     },
@@ -882,7 +889,7 @@ export const resolvers = {
     },
 
     async deleteDemoRequest(_: unknown, { id }: { id: string }) {
-      requireRole("admin");
+      requireRole("super_admin");
       const data = await hasura(
         `mutation DeleteDemoRequest($id: uuid!) { delete_demo_requests_by_pk(id: $id) { id } }`,
         { id },

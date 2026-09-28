@@ -23,6 +23,7 @@ export const CompanySettingsQuery = graphql(`
     companySettings {
       name
       aliases
+      digestEmails
       signatureDataUrl
       logoDataUrl
       gstin

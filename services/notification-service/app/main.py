@@ -20,10 +20,11 @@ from shared_types.logging import configure_logging
 from shared_types.secrets_check import assert_production_secrets_configured
 
 from . import queue as outbound_queue
-from .hasura import HasuraError, find_due_reminders, find_past_due, mark_overdue, mark_reminded
-from .notify import format_digest, get_notifier, send_direct_email
+from .hasura import HasuraError, find_companies, find_due_reminders, find_past_due, mark_overdue, mark_reminded
+from .notify import format_digest, send_direct_email
 
 configure_logging("notification-service")
+log = logging.getLogger("notification-service")
 assert_production_secrets_configured("HASURA_GRAPHQL_JWT_SECRET", "INTERNAL_SERVICE_TOKEN")
 app = FastAPI(title="notification-service", version="0.1.0")
 
@@ -75,9 +76,14 @@ async def customer_reminders() -> dict:
         )
     except HasuraError as exc:
         raise HTTPException(502, f"Hasura error: {exc}")
+    try:
+        companies = await find_companies(list({r["company_id"] for r in rows}))
+    except HasuraError as exc:
+        raise HTTPException(502, f"Hasura error: {exc}")
     sent = skipped = 0
     for r in rows:
         cust = r.get("customer") or {}
+        company_name = (companies.get(r["company_id"]) or {}).get("name") or "your supplier"
         if not cust.get("email"):
             skipped += 1
             continue
@@ -85,10 +91,10 @@ async def customer_reminders() -> dict:
         ok = await asyncio.to_thread(
             send_direct_email,
             cust["email"],
-            f"Reminder: invoice {r['invoice_number']} is overdue",
+            f"Reminder: invoice {r['invoice_number']} is overdue — {company_name}",
             (
                 f"Hi {cust.get('name', 'there')},\n\n"
-                f"Invoice {r['invoice_number']} (amount {r['amount']}) was due on "
+                f"{company_name} is following up: invoice {r['invoice_number']} (amount {r['amount']}) was due on "
                 f"{r['due_date']} and is now {days} day(s) overdue. "
                 "Please arrange payment at your earliest convenience. "
                 "If you've already paid, please ignore this message.\n"
@@ -111,8 +117,25 @@ async def overdue_sweep() -> dict:
     except HasuraError as exc:
         raise HTTPException(502, f"Hasura error during sweep: {exc}")
 
-    subject, body = format_digest(rows)
-    get_notifier().send(subject, body)
+    # One digest per company, to that company's own recipients only — never a
+    # single global inbox (that would mail one tenant's invoices to another).
+    by_company: dict[str, list[dict]] = {}
+    for r in rows:
+        by_company.setdefault(r["company_id"], []).append(r)
+    try:
+        companies = await find_companies(list(by_company))
+    except HasuraError as exc:
+        raise HTTPException(502, f"Hasura error loading companies: {exc}")
+    digests_sent = 0
+    for cid, company_rows in by_company.items():
+        recipients = (companies.get(cid) or {}).get("digest_emails") or []
+        if not recipients:
+            log.warning("company %s has no digest recipients — digest not sent", cid)
+            continue
+        digest_subject, digest_body = format_digest(company_rows)
+        for addr in recipients:
+            digests_sent += int(await asyncio.to_thread(send_direct_email, addr, digest_subject, digest_body))
+    subject = f"Overdue sweep: {len(rows)} invoices flagged" if rows else "Overdue sweep: nothing overdue"
 
     # Payables only — this is telling the vendor *we* haven't paid *them* yet,
     # which only makes sense for money we owe, not money owed to us.
@@ -123,12 +146,13 @@ async def overdue_sweep() -> dict:
         vendor = r.get("vendor") or {}
         if not vendor.get("email"):
             continue
+        company_name = (companies.get(r["company_id"]) or {}).get("name") or "us"
         sent = send_direct_email(
             vendor["email"],
-            f"Invoice {r['invoice_number']} is now overdue",
+            f"Invoice {r['invoice_number']} is now overdue — {company_name}",
             (
                 f"Hi {vendor.get('name', 'there')},\n\n"
-                f"Our records show invoice {r['invoice_number']} "
+                f"{company_name}'s records show invoice {r['invoice_number']} "
                 f"(due {r['due_date']}, amount {r['amount']}) is now overdue on our end. "
                 "We're working on getting this paid — thanks for your patience.\n"
             ),
@@ -141,6 +165,7 @@ async def overdue_sweep() -> dict:
         "swept": swept,
         "invoice_ids": [r["id"] for r in rows],
         "digest_subject": subject,
+        "digests_sent": digests_sent,
         "vendor_notified": vendor_notified,
     }
 
@@ -185,10 +210,11 @@ async def notify_send_invoice(req: SendInvoiceRequest) -> dict:
 @app.post("/notify/demo-request", dependencies=[Depends(require_internal_token)])
 async def notify_demo_request(req: DemoRequest) -> dict:
     """A prospect submitted the landing page's "Book a demo" form: notifies the
-    ops inbox (EMAIL_TO, same recipient as the overdue digest) and sends the
+    super admin inbox (PLATFORM_EMAIL_TO — never a company's digest recipients)
+    and sends the
     prospect a confirmation. Two independent best-effort sends — a bounce on
     one shouldn't hide whether the other got through."""
-    to = [a.strip() for a in os.getenv("EMAIL_TO", "").split(",") if a.strip()]
+    to = [a.strip() for a in os.getenv("PLATFORM_EMAIL_TO", "").split(",") if a.strip()]
     sent_team = False
     if to:
         sent_team = send_direct_email(
@@ -201,7 +227,7 @@ async def notify_demo_request(req: DemoRequest) -> dict:
             ),
         )
     else:
-        log.warning("EMAIL_TO unset — demo request from %s not forwarded to the team", req.work_email)
+        log.warning("PLATFORM_EMAIL_TO unset — demo request from %s not forwarded to the team", req.work_email)
 
     sent_customer = send_direct_email(
         req.work_email,

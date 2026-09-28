@@ -318,6 +318,8 @@ type DemoRequest {
 type CompanySettings {
   name: String!
   aliases: [String!]!
+  """Who gets this company's daily overdue-invoice digest."""
+  digestEmails: [String!]!
   """Saved default digital signature (a data: URL PNG), stamped on every
   generated invoice from Settings -> Signature. Null until one is saved."""
   signatureDataUrl: String
@@ -452,7 +454,7 @@ type Mutation {
   updateCustomerEmail(id: ID!, email: String): Customer!
   updateCustomerTaxDetails(id: ID!, gstin: String, address: String, state: String): Customer!
   setCollectionStatus(id: ID!, status: CollectionStatus!): Invoice!
-  updateCompanySettings(name: String!, aliases: [String!]!): CompanySettings!
+  updateCompanySettings(name: String!, aliases: [String!]!, digestEmails: [String!]): CompanySettings!
   saveCompanySignature(dataUrl: String!): CompanySettings!
   saveCompanyLogo(dataUrl: String!): CompanySettings!
   updateCompanyTaxDetails(

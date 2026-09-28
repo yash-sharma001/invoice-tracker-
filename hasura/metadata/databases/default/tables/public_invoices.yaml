@@ -148,6 +148,7 @@ select_permissions:
     permission:
       columns:
         - id
+        - company_id
         - invoice_number
         - due_date
         - amount

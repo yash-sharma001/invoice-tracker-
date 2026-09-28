@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
-import { ROLES, useRole, type Capability } from "@/lib/role";
+import { roleLabel as fmtRole, useRole, type Capability } from "@/lib/role";
 import { useAsk } from "@/components/ask/AskContext";
 import { IconAsk } from "@/components/ui/icons";
 import { QlensMark } from "@/components/brand/QlensMark";
@@ -23,7 +23,8 @@ const NAV: {
   { href: "/forecast", label: "Forecast", cap: "viewDashboard" },
   { href: "/upload", label: "Upload", cap: "addInvoices" },
   { href: "/users", label: "Users", cap: "manageUsers" },
-  { href: "/demo-requests", label: "Leads", cap: "manageUsers" },
+  { href: "/platform", label: "Platform", cap: "platform" },
+  { href: "/demo-requests", label: "Leads", cap: "platform" },
   { href: "/settings", label: "Settings", cap: "manageSettings" },
 ];
 
@@ -32,8 +33,10 @@ export function TopNav() {
   const pathname = usePathname();
   const { can, user, role, logout, landingPath } = useRole();
   const { setOpen } = useAsk();
-  const nav = NAV.filter((n) => !n.cap || can(n.cap));
-  const roleLabel = ROLES.find((r) => r.value === role)?.label ?? role;
+  const isSuper = role === "super_admin";
+  // Platform owner sees only platform tabs; everyone else never sees them.
+  const nav = NAV.filter((n) => (n.cap === "platform" ? isSuper : !isSuper && (!n.cap || can(n.cap))));
+  const roleLabel = fmtRole(role);
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface px-4 sm:gap-6 sm:px-6">
@@ -65,14 +68,14 @@ export function TopNav() {
       </nav>
 
       <div className="flex shrink-0 items-center gap-3">
-        <button
+        {!isSuper && <button
           type="button"
           onClick={() => setOpen(true)}
           className="inline-flex h-8 items-center gap-1.5 rounded-full border border-genai/40 bg-genai-tint px-3.5 text-sm font-medium text-genai hover:bg-genai/10"
         >
           <IconAsk width={15} height={15} />
           Ask
-        </button>
+        </button>}
         <span className="hidden text-sm text-ink-muted sm:inline">
           <span className="tabular text-ink">{user}</span>
           {roleLabel ? ` · ${roleLabel}` : ""}

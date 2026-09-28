@@ -25,6 +25,7 @@ The token carries the `https://hasura.io/jwt/claims` block Hasura expects
 
 from __future__ import annotations
 
+import logging
 import os
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -43,12 +44,19 @@ from .email import send_invite_email
 from .users import (
     User,
     accept_invite,
+    bootstrap_super_admin,
     create_invite,
     create_user,
+    delete_user,
     list_users,
     lookup_user,
+    platform_companies,
+    platform_company_users,
+    platform_overview,
     register_company,
+    set_company_status,
     set_user_active,
+    transfer_admin,
 )
 
 TTL_SECONDS = int(os.getenv("AUTH_TOKEN_TTL_SECONDS", "3600"))
@@ -67,6 +75,19 @@ assert_production_secrets_configured(
     "HASURA_GRAPHQL_JWT_SECRET", "INTERNAL_SERVICE_TOKEN", "KEYCLOAK_ADMIN_CLIENT_SECRET",
 )
 app = FastAPI(title="auth-service", version="0.3.0")
+
+
+@app.on_event("startup")
+def _seed_super_admin() -> None:
+    # First platform owner comes from env (no credentials in the realm export).
+    # Idempotent: does nothing once any super_admin exists.
+    u, e, p = (os.getenv(k, "") for k in ("SUPER_ADMIN_USERNAME", "SUPER_ADMIN_EMAIL", "SUPER_ADMIN_PASSWORD"))
+    if u and e and p:
+        try:
+            bootstrap_super_admin(u, e, p)
+        except Exception:  # e.g. email already used by another account — never block startup on this
+            logging.getLogger("auth-service").exception("super admin seeding failed — fix SUPER_ADMIN_* and restart")
+
 # Called from the browser (register / invite-accept pages — login itself is a
 # redirect to Keycloak now, not a call here). Deny-by-default: an unset
 # AUTH_CORS_ORIGINS in prod fails closed instead of falling back to "*".
@@ -270,3 +291,69 @@ def _require_admin(authorization: str) -> str:
     if not company_id:
         raise HTTPException(401, "token missing company")
     return company_id
+
+
+def _require_super_admin(authorization: str) -> None:
+    if _claims_from(authorization).get("app_role") != "super_admin":
+        raise HTTPException(403, "super_admin role required")
+
+
+class CompanyStatusRequest(BaseModel):
+    status: str
+
+
+class TransferAdminRequest(BaseModel):
+    username: str
+
+
+def _bad_request(fn, *args):
+    try:
+        return fn(*args)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.get("/platform/overview")
+def platform_overview_route(authorization: str = Header(default="")) -> dict:
+    _require_super_admin(authorization)
+    return platform_overview()
+
+
+@app.get("/platform/companies")
+def platform_companies_route(authorization: str = Header(default="")) -> dict:
+    _require_super_admin(authorization)
+    return {"companies": platform_companies()}
+
+
+@app.get("/platform/companies/{company_id}/users")
+def platform_company_users_route(company_id: str, authorization: str = Header(default="")) -> dict:
+    _require_super_admin(authorization)
+    return {"users": platform_company_users(company_id)}
+
+
+@app.patch("/platform/companies/{company_id}")
+def platform_company_status_route(company_id: str, req: CompanyStatusRequest, authorization: str = Header(default="")) -> dict:
+    _require_super_admin(authorization)
+    _bad_request(set_company_status, company_id, req.status)
+    return {"ok": True}
+
+
+@app.delete("/platform/companies/{company_id}")
+def platform_delete_company_route(company_id: str, authorization: str = Header(default="")) -> dict:
+    _require_super_admin(authorization)
+    _bad_request(set_company_status, company_id, "deleted")  # soft delete
+    return {"ok": True}
+
+
+@app.delete("/platform/companies/{company_id}/users/{username}")
+def platform_delete_user_route(company_id: str, username: str, authorization: str = Header(default="")) -> dict:
+    _require_super_admin(authorization)
+    _bad_request(delete_user, company_id, username)
+    return {"ok": True}
+
+
+@app.post("/platform/companies/{company_id}/transfer-admin")
+def platform_transfer_admin_route(company_id: str, req: TransferAdminRequest, authorization: str = Header(default="")) -> dict:
+    _require_super_admin(authorization)
+    _bad_request(transfer_admin, company_id, req.username)
+    return {"ok": True}

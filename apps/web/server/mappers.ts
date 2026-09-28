@@ -129,7 +129,7 @@ export function mapVendor(v: any) {
 
 export const COMPANY_SEL = `
   name aliases signature_data_url logo_data_url gstin pan address state
-  bank_account_name bank_name bank_account_number bank_ifsc bank_swift
+  bank_account_name bank_name bank_account_number bank_ifsc bank_swift digest_emails
 `;
 
 export function mapCompanySettings(row: any) {
@@ -137,6 +137,7 @@ export function mapCompanySettings(row: any) {
   return {
     name: row.name ?? "",
     aliases: row.aliases ?? [],
+    digestEmails: row.digest_emails ?? [],
     signatureDataUrl: row.signature_data_url ?? null,
     logoDataUrl: row.logo_data_url ?? null,
     gstin: row.gstin ?? null,

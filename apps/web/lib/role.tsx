@@ -18,13 +18,14 @@ import {
  * `setRole` still lets you preview another role within the session without
  * re-authenticating.
  */
-export type Role = "finance_user" | "approver" | "admin" | "genai_readonly";
+export type Role = "finance_user" | "approver" | "admin" | "super_admin" | "genai_readonly";
 
 export const ROLES: { value: Role; label: string }[] = [
   { value: "finance_user", label: "Finance team" },
   { value: "approver", label: "Approver" },
   { value: "admin", label: "Admin" },
 ];
+export const roleLabel = (r: Role | null) => (r === "super_admin" ? "Super admin" : ROLES.find((x) => x.value === r)?.label ?? r);
 
 /**
  * What each role can do. The BFF enforces the same split server-side on every
@@ -44,7 +45,8 @@ export type Capability =
   | "viewAdminStats"
   | "manageUsers"
   | "manageSettings"
-  | "deleteInvoice";
+  | "deleteInvoice"
+  | "platform";
 
 const ROLE_CAPS: Record<Role, Capability[]> = {
   finance_user: ["viewDashboard", "recordPayment", "addInvoices", "deleteInvoice", "manageSettings"],
@@ -58,6 +60,8 @@ const ROLE_CAPS: Record<Role, Capability[]> = {
     "manageSettings",
     "deleteInvoice",
   ],
+  // Platform owner: sees ONLY the /platform area + leads, no tenant data.
+  super_admin: ["platform"],
   genai_readonly: [],
 };
 
@@ -200,9 +204,11 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         return role ? ROLE_CAPS[role].includes(c) : false;
       },
       landingPath:
-        session?.role && ROLE_CAPS[session.role].includes("viewDashboard")
-          ? "/dashboard"
-          : "/invoices",
+        session?.role === "super_admin"
+          ? "/platform"
+          : session?.role && ROLE_CAPS[session.role].includes("viewDashboard")
+            ? "/dashboard"
+            : "/invoices",
       setRole: (r) => session && setSession({ ...session, role: r }),
       register,
       acceptInvite,

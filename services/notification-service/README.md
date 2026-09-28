@@ -8,10 +8,9 @@ Target of the `overdue_sweep_daily` Hasura cron trigger.
 | GET | `/health` | `{status:"ok"}` |
 
 `/overdue-sweep`: finds `payment_status = 'unpaid' AND due_date < today`, sets them to
-`overdue` (one bulk `update_invoices` as admin), builds a vendor-grouped digest, and sends
-it via `Notifier`. `NOTIFY_CHANNEL` picks the channel: `log` (stdout, default), `slack`
-(incoming webhook), or `email` (SMTP). Slack / email that aren't fully configured log a
-warning and fall back to stdout rather than raising.
+`overdue` (one bulk `update_invoices` as admin), builds a vendor-grouped digest
+**per company**, and emails it to that company's `digest_emails` (set in Settings). SMTP
+that isn't configured logs a warning rather than raising.
 
 ## Config
 
@@ -19,10 +18,9 @@ warning and fall back to stdout rather than raising.
 |---|---|---|
 | `HASURA_ENDPOINT` | `http://localhost:8088/v1/graphql` | |
 | `HASURA_ADMIN_SECRET` | `devsecret` | |
-| `NOTIFY_CHANNEL` | `log` | `log` \| `slack` \| `email` |
-| `SLACK_WEBHOOK_URL` | — | `slack` |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_STARTTLS` | — / `587` / — / — / `1` | `email` |
-| `EMAIL_FROM` / `EMAIL_TO` | `SMTP_USER` / — | `email` (`EMAIL_TO` comma-separated) |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_STARTTLS` | — / `587` / — / — / `1` | all outbound email |
+| `EMAIL_FROM` | `SMTP_USER` | sender address |
+| `PLATFORM_EMAIL_TO` | — | demo-request (lead) emails, super admin only, comma-separated |
 
 ## Run
 

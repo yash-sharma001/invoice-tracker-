@@ -94,10 +94,11 @@ export const TriggerModelRetrainMutation = graphql(`
 `);
 
 export const UpdateCompanySettingsMutation = graphql(`
-  mutation UpdateCompanySettings($name: String!, $aliases: [String!]!) {
-    updateCompanySettings(name: $name, aliases: $aliases) {
+  mutation UpdateCompanySettings($name: String!, $aliases: [String!]!, $digestEmails: [String!]) {
+    updateCompanySettings(name: $name, aliases: $aliases, digestEmails: $digestEmails) {
       name
       aliases
+      digestEmails
     }
   }
 `);

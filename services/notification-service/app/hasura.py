@@ -49,7 +49,7 @@ async def _gql(query: str, variables: dict) -> dict:
 _FIND = """
 query PastDue($today: date!) {
   invoices(where: {payment_status: {_eq: "unpaid"}, due_date: {_lt: $today}}) {
-    id invoice_number due_date amount department direction
+    id company_id invoice_number due_date amount department direction
     vendor { name email }
   }
 }
@@ -68,6 +68,20 @@ async def find_past_due(today: str) -> list[dict]:
     return (await _gql(_FIND, {"today": today}))["invoices"]
 
 
+_COMPANIES = """
+query Companies($ids: [uuid!]!) {
+  companies(where: {id: {_in: $ids}}) { id name digest_emails }
+}
+"""
+
+
+async def find_companies(ids: list[str]) -> dict[str, dict]:
+    if not ids:
+        return {}
+    rows = (await _gql(_COMPANIES, {"ids": ids}))["companies"]
+    return {r["id"]: r for r in rows}
+
+
 async def mark_overdue(ids: list[str]) -> int:
     if not ids:
         return 0
@@ -82,7 +96,7 @@ query DueReminders($today: date!, $cutoff: date!) {
     due_date: {_lt: $today},
     _or: [{last_reminder_on: {_is_null: true}}, {last_reminder_on: {_lte: $cutoff}}]
   }) {
-    id invoice_number due_date amount tax_amount reminder_count
+    id company_id invoice_number due_date amount tax_amount reminder_count
     customer { name email }
   }
 }

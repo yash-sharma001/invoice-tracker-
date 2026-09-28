@@ -330,9 +330,9 @@ fixed field list, a fixed operator set. See [The GenAI service](#the-genai-servi
 
 Finds `payment_status = 'unpaid' AND due_date < today`, sets them to `overdue` in one
 bulk `update_invoices` (as admin), builds a vendor-grouped digest, and sends it.
-`NOTIFY_CHANNEL` selects `log` (stdout, default), `slack` (incoming webhook), or `email`
-(SMTP). A partially-configured Slack/email channel logs a warning and falls back to
-stdout rather than raising.
+Each company's digest is emailed (SMTP) to that company's own digest recipients, set by
+its admin in Settings — never to a shared inbox. Unconfigured SMTP logs a warning
+instead of raising.
 
 ---
 
@@ -610,9 +610,8 @@ digest formatter, and JWT mint/verify/refresh.
 | `RABBITMQ_URL` | `amqp://guest:guest@rabbitmq:5672/` (compose); host-mapped `5673` outside Docker | ocr-service's bulk upload queue and the web app's outbound notification queue (`apps/web/server/queue.ts`) |
 | `INTERNAL_SERVICE_TOKEN` | `dev-internal-token-change-me` | shared secret sent as `X-Internal-Token` on every service-to-service call; each service's `require_internal_token` dependency fails closed if unset |
 | `AZURE_OPENAI_ENDPOINT` / `_KEY` / `_DEPLOYMENT` / `_API_VERSION` | unset → offline / `2024-06-01` | genai-service LLM |
-| `NOTIFY_CHANNEL` | `log` | `log` / `slack` / `email` |
-| `SLACK_WEBHOOK_URL` | — | `NOTIFY_CHANNEL=slack` |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_STARTTLS` / `SMTP_USER` / `SMTP_PASSWORD` / `EMAIL_FROM` / `EMAIL_TO` | — / `587` / `1` / … | `NOTIFY_CHANNEL=email` (`EMAIL_TO` comma-separated) |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_STARTTLS` / `SMTP_USER` / `SMTP_PASSWORD` / `EMAIL_FROM` | — / `587` / `1` / … | all outbound email |
+| `PLATFORM_EMAIL_TO` | — | demo-request (lead) emails to the super admin, comma-separated |
 | `AUTH_TOKEN_TTL_SECONDS` | `3600` | auth-service token lifetime |
 
 ### `apps/web/.env.local`

@@ -20,7 +20,6 @@ data:
 
   EMBEDDING_MODEL: "all-MiniLM-L6-v2"
   HF_HUB_OFFLINE: "1"
-  NOTIFY_CHANNEL: "log" # switch to slack/email — see infra/.env.example for the extra vars each needs
   AUTH_TOKEN_TTL_SECONDS: "3600"
 
   # web BFF

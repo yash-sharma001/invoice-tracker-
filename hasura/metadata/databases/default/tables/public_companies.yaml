@@ -22,6 +22,15 @@ select_permissions:
     permission:
       columns: "*"
       filter: { id: { _eq: X-Hasura-Company-Id } }
+  - role: notifier
+    # Cross-tenant by design (the overdue sweep runs for every company) — but
+    # only the columns needed to address each company's own digest.
+    permission:
+      columns:
+        - id
+        - name
+        - digest_emails
+      filter: {}
 update_permissions:
   - role: finance_user
     # Signature/logo/tax settings only — renaming the company is company_admin's
@@ -46,6 +55,7 @@ update_permissions:
       columns:
         - name
         - aliases
+        - digest_emails
         - signature_data_url
         - logo_data_url
         - gstin

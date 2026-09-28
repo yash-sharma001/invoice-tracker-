@@ -1,5 +1,5 @@
 """Invite email delivery — same SMTP_*/EMAIL_* env vars and log-fallback
-behavior as services/notification-service/app/notify.py's EmailNotifier,
+behavior as services/notification-service/app/notify.py's send_direct_email,
 copied rather than imported since auth-service doesn't otherwise depend on
 notification-service."""
 

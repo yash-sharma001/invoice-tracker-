@@ -14,6 +14,8 @@ const ROLE_OPTIONS = [
   { value: "admin", label: "Admin" },
 ] as const;
 
+const SEAT_LIMITS: Record<string, number> = { admin: 1, finance_user: 2, approver: 2 };
+
 type UserRecord = { username: string; role: string; email?: string; active?: boolean };
 
 export default function UsersPage() {
@@ -260,6 +262,14 @@ export default function UsersPage() {
       </Panel>
 
       <Panel title="Existing users">
+        <p className="mb-3 text-xs text-ink-muted">
+          Seats used:{" "}
+          {ROLE_OPTIONS.map((o) => {
+            const used = users.filter((u) => u.role === o.value && (u.active ?? true)).length;
+            return `${o.label} ${used}/${SEAT_LIMITS[o.value]}`;
+          }).join(" · ")}
+          . Deactivating a user frees their seat.
+        </p>
         {toggleError && (
           <Callout tone="bad" className="mb-3 text-xs">
             {toggleError}

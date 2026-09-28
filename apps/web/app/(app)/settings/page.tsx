@@ -48,6 +48,7 @@ export default function SettingsPage() {
 
   const [name, setName] = useState("");
   const [aliases, setAliases] = useState("");
+  const [digest, setDigest] = useState("");
   const [ok, setOk] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -66,6 +67,7 @@ export default function SettingsPage() {
     /* eslint-disable react-hooks/set-state-in-effect */
     setName(data.companySettings.name);
     setAliases(data.companySettings.aliases.join(", "));
+    setDigest(data.companySettings.digestEmails.join(", "));
     setTax(Object.fromEntries(TAX_FIELDS.map((f) => [f.name, data.companySettings[f.name] ?? ""])) as Record<TaxField, string>);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [data]);
@@ -94,6 +96,7 @@ export default function SettingsPage() {
         variables: {
           name: name.trim(),
           aliases: aliases.split(",").map((a) => a.trim()).filter(Boolean),
+          digestEmails: digest.split(",").map((a) => a.trim()).filter(Boolean),
         },
       });
       setOk("Saved.");
@@ -132,6 +135,17 @@ export default function SettingsPage() {
                 <p className="mt-1 text-2xs text-ink-muted">
                   Comma-separated alternate spellings, if any — minor punctuation and Pvt/Ltd
                   differences are already matched automatically.
+                </p>
+              </Field>
+              <Field label="Overdue digest recipients">
+                <TextInput
+                  value={digest}
+                  onChange={(e) => setDigest(e.target.value)}
+                  placeholder="ap-team@acme.com, cfo@acme.com"
+                  disabled={loading}
+                />
+                <p className="mt-1 text-2xs text-ink-muted">
+                  Comma-separated. Get the daily list of your newly overdue invoices — only your company&apos;s.
                 </p>
               </Field>
               <div className="flex justify-end">
