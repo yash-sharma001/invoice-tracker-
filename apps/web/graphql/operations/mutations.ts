@@ -125,6 +125,9 @@ export const UpdateCompanyTaxDetailsMutation = graphql(`
     $pan: String
     $address: String
     $state: String
+    $legalName: String
+    $city: String
+    $pincode: String
     $bankAccountName: String
     $bankName: String
     $bankAccountNumber: String
@@ -136,6 +139,9 @@ export const UpdateCompanyTaxDetailsMutation = graphql(`
       pan: $pan
       address: $address
       state: $state
+      legalName: $legalName
+      city: $city
+      pincode: $pincode
       bankAccountName: $bankAccountName
       bankName: $bankName
       bankAccountNumber: $bankAccountNumber
@@ -146,6 +152,9 @@ export const UpdateCompanyTaxDetailsMutation = graphql(`
       pan
       address
       state
+      legalName
+      city
+      pincode
       bankAccountName
       bankName
       bankAccountNumber
@@ -167,6 +176,24 @@ export const GenerateAndSendInvoiceMutation = graphql(`
 export const ResendInvoiceMutation = graphql(`
   mutation ResendInvoice($id: ID!) {
     resendInvoice(id: $id)
+  }
+`);
+
+export const RetryEinvoiceMutation = graphql(`
+  mutation RetryEinvoice($id: ID!) {
+    retryEinvoice(id: $id) {
+      id
+      irn
+      einvoiceStatus
+      einvoiceError
+      collectionStatus
+    }
+  }
+`);
+
+export const SaveEinvoiceCredentialsMutation = graphql(`
+  mutation SaveEinvoiceCredentials($provider: String!, $configJson: String!) {
+    saveEinvoiceCredentials(provider: $provider, configJson: $configJson)
   }
 `);
 
@@ -231,12 +258,39 @@ export const UpdateCustomerEmailMutation = graphql(`
 `);
 
 export const UpdateCustomerTaxDetailsMutation = graphql(`
-  mutation UpdateCustomerTaxDetails($id: ID!, $gstin: String, $address: String, $state: String) {
-    updateCustomerTaxDetails(id: $id, gstin: $gstin, address: $address, state: $state) {
+  mutation UpdateCustomerTaxDetails(
+    $id: ID!
+    $gstin: String
+    $address: String
+    $state: String
+    $legalName: String
+    $city: String
+    $pincode: String
+  ) {
+    updateCustomerTaxDetails(
+      id: $id
+      gstin: $gstin
+      address: $address
+      state: $state
+      legalName: $legalName
+      city: $city
+      pincode: $pincode
+    ) {
       id
       gstin
       address
       state
+      legalName
+      city
+      pincode
+    }
+  }
+`);
+
+export const SetEinvoiceEnabledMutation = graphql(`
+  mutation SetEinvoiceEnabled($enabled: Boolean!) {
+    setEinvoiceEnabled(enabled: $enabled) {
+      einvoiceEnabled
     }
   }
 `);

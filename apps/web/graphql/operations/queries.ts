@@ -30,11 +30,25 @@ export const CompanySettingsQuery = graphql(`
       pan
       address
       state
+      legalName
+      city
+      pincode
+      einvoiceEnabled
       bankAccountName
       bankName
       bankAccountNumber
       bankIfsc
       bankSwift
+    }
+  }
+`);
+
+export const EinvoiceSetupQuery = graphql(`
+  query EinvoiceSetup {
+    einvoiceSetup {
+      provider
+      hasCredentials
+      missingSellerFields
     }
   }
 `);
@@ -183,6 +197,9 @@ export const InvoiceDetailQuery = graphql(`
       ...InvoiceRowFields
       description
       template
+      irn
+      einvoiceStatus
+      einvoiceError
       vendor {
         id
         name
@@ -310,6 +327,9 @@ export const CustomersQuery = graphql(`
         gstin
         address
         state
+        legalName
+        city
+        pincode
       }
       totalInvoices
       totalExposure
@@ -332,6 +352,9 @@ export const CustomerDetailQuery = graphql(`
         gstin
         address
         state
+        legalName
+        city
+        pincode
       }
       totalInvoices
       totalExposure

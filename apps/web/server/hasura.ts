@@ -36,6 +36,12 @@ export const PAYMENTS_WEBHOOK_CLAIMS: Claims = {
   sub: "payments-webhook", iat: 0, exp: 0, role: "payments_webhook", user: "payments-webhook", companyId: DEMO_COMPANY_ID,
 };
 
+/** IRP registration — the only role that can read IRP credentials or write an
+ * invoice's IRN. Scoped to one company per call. */
+export const einvoiceClaims = (companyId: string): Claims => ({
+  sub: "einvoice-service", iat: 0, exp: 0, role: "einvoice_service", user: "einvoice-service", companyId,
+});
+
 // Checked lazily (at first real request), not at module load — `next build`
 // imports every route module to statically analyze it, with NODE_ENV forced
 // to "production" regardless of the Dockerfile's runtime env, so a top-level

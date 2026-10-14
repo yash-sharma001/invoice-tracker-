@@ -60,6 +60,7 @@ insert_permissions:
         - template
         - buyer_order_no
         - ack_no
+        - place_of_supply
   - role: company_admin
     permission:
       check: {}
@@ -86,7 +87,17 @@ insert_permissions:
         - template
         - buyer_order_no
         - ack_no
+        - place_of_supply
 select_permissions:
+  - role: einvoice_service
+    # The only role that can write IRP results (see update_permissions below).
+    permission:
+      columns:
+        - id
+        - company_id
+        - irn
+        - einvoice_status
+      filter: { company_id: { _eq: X-Hasura-Company-Id } }
   - role: payments_webhook
     permission:
       columns:
@@ -241,6 +252,19 @@ update_permissions:
       columns:
         - payment_status
       filter: {}
+      check: {}
+  - role: einvoice_service
+    # Only this role can set an IRN. ack_no is included because for an
+    # e-invoice it is the IRP's acknowledgement number, not a typed value.
+    permission:
+      columns:
+        - irn
+        - ack_no
+        - ack_date
+        - signed_qr
+        - einvoice_status
+        - einvoice_error
+      filter: { company_id: { _eq: X-Hasura-Company-Id } }
       check: {}
 delete_permissions:
   - role: finance_user

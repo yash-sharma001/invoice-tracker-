@@ -83,16 +83,25 @@ function CustomerTaxPanel({
   gstin,
   address,
   state,
+  legalName,
+  city,
+  pincode,
 }: {
   id: string;
   gstin: string | null | undefined;
   address: string | null | undefined;
   state: string | null | undefined;
+  legalName: string | null | undefined;
+  city: string | null | undefined;
+  pincode: string | null | undefined;
 }) {
   const { can } = useRole();
   const [gstinVal, setGstinVal] = useState(gstin ?? "");
   const [addressVal, setAddressVal] = useState(address ?? "");
   const [stateVal, setStateVal] = useState(state ?? "");
+  const [legalNameVal, setLegalNameVal] = useState(legalName ?? "");
+  const [cityVal, setCityVal] = useState(city ?? "");
+  const [pincodeVal, setPincodeVal] = useState(pincode ?? "");
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [update, { loading }] = useMutation(UpdateCustomerTaxDetailsMutation);
@@ -113,7 +122,15 @@ function CustomerTaxPanel({
     setSaved(false);
     try {
       await update({
-        variables: { id, gstin: gstinVal.trim() || null, address: addressVal.trim() || null, state: stateVal.trim() || null },
+        variables: {
+          id,
+          gstin: gstinVal.trim() || null,
+          address: addressVal.trim() || null,
+          state: stateVal.trim() || null,
+          legalName: legalNameVal.trim() || null,
+          city: cityVal.trim() || null,
+          pincode: pincodeVal.trim() || null,
+        },
       });
       setSaved(true);
     } catch (e) {
@@ -131,7 +148,16 @@ function CustomerTaxPanel({
           <TextInput value={stateVal} onChange={(e) => { setStateVal(e.target.value); setSaved(false); }} placeholder="Maharashtra" />
         </Field>
         <Field label="Address">
-          <TextInput value={addressVal} onChange={(e) => { setAddressVal(e.target.value); setSaved(false); }} placeholder="Street, city, PIN" />
+          <TextInput value={addressVal} onChange={(e) => { setAddressVal(e.target.value); setSaved(false); }} placeholder="Street, area" />
+        </Field>
+        <Field label="Legal name">
+          <TextInput value={legalNameVal} onChange={(e) => { setLegalNameVal(e.target.value); setSaved(false); }} placeholder="As on their GST registration" />
+        </Field>
+        <Field label="City">
+          <TextInput value={cityVal} onChange={(e) => { setCityVal(e.target.value); setSaved(false); }} placeholder="New Delhi" />
+        </Field>
+        <Field label="Pincode">
+          <TextInput value={pincodeVal} onChange={(e) => { setPincodeVal(e.target.value); setSaved(false); }} placeholder="110001" />
         </Field>
         <div className="md:col-span-3 flex justify-end">
           <Button type="submit" variant="primary" disabled={loading}>
@@ -197,7 +223,15 @@ export default function CustomerDetailPage(props: { params: Promise<{ id: string
           </div>
 
           <CustomerEmailPanel id={params.id} email={c.customer.email} />
-          <CustomerTaxPanel id={params.id} gstin={c.customer.gstin} address={c.customer.address} state={c.customer.state} />
+          <CustomerTaxPanel
+            id={params.id}
+            gstin={c.customer.gstin}
+            address={c.customer.address}
+            state={c.customer.state}
+            legalName={c.customer.legalName}
+            city={c.customer.city}
+            pincode={c.customer.pincode}
+          />
 
           <Panel title="Receivable history" className="mt-6">
             <QueryState loading={history.loading} error={history.error} minRows={6}>

@@ -32,6 +32,11 @@ type Customer {
   decide CGST+SGST (same state) vs IGST (different states) on a generated
   GST invoice."""
   state: String
+  """Registered legal name, city and pincode — required by the IRP for an
+  e-invoice."""
+  legalName: String
+  city: String
+  pincode: String
   invoices: [Invoice!]!
 }
 
@@ -83,6 +88,14 @@ type Invoice {
   way — null for invoices created by any other path (upload, manual entry,
   CSV). Presence of this is what gates the "Resend" action."""
   template: String
+  """The IRP's Invoice Reference Number — set only once the government IRP
+  has registered the invoice; an invoice without one isn't a valid e-invoice."""
+  irn: String
+  """pending | generated | failed | cancelled; null when e-invoicing doesn't
+  apply to this invoice."""
+  einvoiceStatus: String
+  """Why the IRP registration failed, when einvoiceStatus is `failed`."""
+  einvoiceError: String
   """Days past the due date for an unpaid invoice; 0 otherwise."""
   daysOverdue: Int!
   duplicateFlag: DuplicateFlag
@@ -296,6 +309,8 @@ type Query {
   cashForecast: CashForecast!
   ask(prompt: String!): AskAnswer!
   companySettings: CompanySettings!
+  """Admin only. Whether this company is ready to issue e-invoices."""
+  einvoiceSetup: EinvoiceSetup!
   mlModelStatus: MlModelStatus!
   mlDriftStatus: [MlDriftReport!]!
   mlRetrainHistory(limit: Int): [MlRetrainEvent!]!
@@ -332,11 +347,27 @@ type CompanySettings {
   """Free-text state name — compared against a customer's own `state` to
   decide CGST+SGST (same state) vs IGST (different states)."""
   state: String
+  """Registered legal name, city and pincode — required by the IRP for an
+  e-invoice."""
+  legalName: String
+  city: String
+  pincode: String
+  """When true, generated invoices to GSTIN-holding customers are registered
+  with the IRP (IRN + signed QR) before they are sent."""
+  einvoiceEnabled: Boolean!
   bankAccountName: String
   bankName: String
   bankAccountNumber: String
   bankIfsc: String
   bankSwift: String
+}
+
+type EinvoiceSetup {
+  """"gsp" or "nic"; null when no IRP credentials are saved."""
+  provider: String
+  hasCredentials: Boolean!
+  """Seller details still missing for the IRP (empty when complete)."""
+  missingSellerFields: [String!]!
 }
 
 input LineItemInput {
@@ -452,7 +483,15 @@ type Mutation {
   updateVendorEmail(id: ID!, email: String): Vendor!
   createCustomer(name: String!, taxId: String, email: String, paymentTermsDays: Int, creditLimit: Float): Customer!
   updateCustomerEmail(id: ID!, email: String): Customer!
-  updateCustomerTaxDetails(id: ID!, gstin: String, address: String, state: String): Customer!
+  updateCustomerTaxDetails(
+    id: ID!
+    gstin: String
+    address: String
+    state: String
+    legalName: String
+    city: String
+    pincode: String
+  ): Customer!
   setCollectionStatus(id: ID!, status: CollectionStatus!): Invoice!
   updateCompanySettings(name: String!, aliases: [String!]!, digestEmails: [String!]): CompanySettings!
   saveCompanySignature(dataUrl: String!): CompanySettings!
@@ -462,12 +501,23 @@ type Mutation {
     pan: String
     address: String
     state: String
+    legalName: String
+    city: String
+    pincode: String
     bankAccountName: String
     bankName: String
     bankAccountNumber: String
     bankIfsc: String
     bankSwift: String
   ): CompanySettings!
+  """Admin only. Turning it on requires a valid GSTIN and the full seller
+  address (legal name, city, pincode) so the first e-invoice can't fail on
+  missing company details."""
+  setEinvoiceEnabled(enabled: Boolean!): CompanySettings!
+  """Admin only. Stores this company's IRP credentials, encrypted at rest
+  (never readable back through the API). `provider` is "nic" or "gsp";
+  `configJson` is a JSON object of string fields (baseUrl, clientId, …)."""
+  saveEinvoiceCredentials(provider: String!, configJson: String!): Boolean!
   """Creates a receivable invoice (with line items) from a template, renders
   it as a PDF stamped with the company's saved signature, and emails it to
   the customer — the invoice is created and tracked either way, even if the
@@ -477,6 +527,9 @@ type Mutation {
   template, line items and the company's current signature. Only valid for
   invoices generateAndSendInvoice created (i.e. `template` is set)."""
   resendInvoice(id: ID!): Boolean!
+  """Re-attempts IRP registration for an invoice whose einvoiceStatus is
+  `failed`, reusing the same invoice, and emails it once it has an IRN."""
+  retryEinvoice(id: ID!): Invoice!
   setReviewQueueStatus(id: ID!, status: String!): ReviewQueueItem!
   triggerDriftCheck: [MlDriftReport!]!
   triggerModelRetrain(modelName: String!): MlRetrainEvent!

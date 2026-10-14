@@ -4,7 +4,8 @@
  * values are translated here so no component, operation, or codegen output has
  * to change. This is the Hasura-backed sibling of mock/resolvers.ts.
  */
-import { hasura } from "./hasura";
+import { hasura, einvoiceClaims } from "./hasura";
+import { encryptConfig } from "./einvoice/secrets";
 import { publishNotification } from "./queue";
 import { safeImageSrc } from "../lib/pdf/render";
 import { requireRole, myCompanyId } from "./auth";
@@ -18,7 +19,8 @@ import { buildWhere, buildOrderBy } from "./queryBuilders";
 import * as mlService from "./clients/mlService";
 import * as genaiService from "./clients/genaiService";
 import { toInsert, importInvoicesRows } from "./csvImport";
-import { generateAndSendInvoiceImpl, resendInvoiceImpl } from "./invoiceSend";
+import { generateAndSendInvoiceImpl, resendInvoiceImpl, retryEinvoiceImpl } from "./invoiceSend";
+import { isValidGstin } from "../lib/einvoice/payload";
 import { attachPredictions } from "./predictions";
 
 /** myCompanyId(), or throw — every mutation below still scopes its own
@@ -35,13 +37,20 @@ function requireCompanyId(): string {
 /** update_vendors / update_customers differ only by table + returned columns. */
 /** update_vendors / update_customers differ only by table, returned columns and
  * mapper — which always travel together, so they live in one record. */
+/** Seller details the IRP rejects an invoice without. */
+const missingSellerFields = (c: any): string[] =>
+  [
+    !isValidGstin(c.gstin ?? "") && "a valid GSTIN",
+    !c.legal_name && "legal name",
+    !c.address && "address",
+    !c.city && "city",
+    !/^[1-9]\d{5}$/.test(c.pincode ?? "") && "a 6-digit pincode",
+  ].filter((m): m is string => Boolean(m));
+
+const CUSTOMER_COLS ="id name tax_id payment_terms_days email credit_limit gstin address state legal_name city pincode";
 const PARTY = {
   vendors: { sel: "id name tax_id payment_terms_days email", map: mapVendor, label: "Vendor" },
-  customers: {
-    sel: "id name tax_id payment_terms_days email credit_limit gstin address state",
-    map: mapCustomer,
-    label: "Customer",
-  },
+  customers: { sel: CUSTOMER_COLS, map: mapCustomer, label: "Customer" },
 } as const;
 
 async function setPartyEmail(table: keyof typeof PARTY, { id, email }: { id: string; email?: string | null }) {
@@ -210,7 +219,7 @@ export const resolvers = {
       const data = await hasura(`
         query {
           customers(order_by: { name: asc }) {
-            id name tax_id payment_terms_days email credit_limit gstin address state
+            ${CUSTOMER_COLS}
             invoices { amount tax_amount payment_status due_date payments { paid_at } }
           }
         }
@@ -222,7 +231,7 @@ export const resolvers = {
       const data = await hasura(
         `query C($id: uuid!) {
            customers_by_pk(id: $id) {
-             id name tax_id payment_terms_days email credit_limit gstin address state
+             ${CUSTOMER_COLS}
              invoices { amount tax_amount payment_status due_date payments { paid_at } }
            }
          }`,
@@ -381,6 +390,27 @@ export const resolvers = {
         { id: requireCompanyId() },
       );
       return mapCompanySettings(data.companies_by_pk);
+    },
+
+    /** Per-company e-invoicing readiness. Reports only whether credentials
+     * exist — never their contents. */
+    async einvoiceSetup() {
+      requireRole("admin");
+      const id = requireCompanyId();
+      const [co, cred] = await Promise.all([
+        hasura(`query($id: uuid!) { companies_by_pk(id: $id) { ${COMPANY_SEL} } }`, { id }),
+        hasura<{ einvoice_credentials: { provider: string }[] }>(
+          `query { einvoice_credentials { provider } }`,
+          {},
+          { claims: einvoiceClaims(id) },
+        ),
+      ]);
+      const provider = cred.einvoice_credentials[0]?.provider ?? null;
+      return {
+        provider,
+        hasCredentials: provider !== null,
+        missingSellerFields: missingSellerFields(co.companies_by_pk ?? {}),
+      };
     },
 
     async mlModelStatus() {
@@ -608,6 +638,11 @@ export const resolvers = {
       return resendInvoiceImpl(requireCompanyId(), id);
     },
 
+    async retryEinvoice(_: unknown, { id }: { id: string }) {
+      requireRole("finance_user", "admin");
+      return retryEinvoiceImpl(requireCompanyId(), id);
+    },
+
     async deleteInvoice(_: unknown, { id }: { id: string }) {
       requireRole("finance_user", "admin");
       const data = await hasura(
@@ -696,25 +731,38 @@ export const resolvers = {
 
     async updateCustomerTaxDetails(
       _: unknown,
-      { id, gstin, address, state }: { id: string; gstin?: string | null; address?: string | null; state?: string | null },
+      a: {
+        id: string;
+        gstin?: string | null;
+        address?: string | null;
+        state?: string | null;
+        legalName?: string | null;
+        city?: string | null;
+        pincode?: string | null;
+      },
     ) {
       requireRole("finance_user", "admin");
+      // gstin/address/state are always written (null clears them); the e-invoice
+      // fields only when sent, so callers that don't know about them (the
+      // create-invoice page) can't wipe them.
+      const set: Record<string, string | null> = {
+        gstin: a.gstin?.trim().toUpperCase() || null,
+        address: a.address?.trim() || null,
+        state: a.state?.trim() || null,
+      };
+      if (a.legalName !== undefined) set.legal_name = a.legalName?.trim() || null;
+      if (a.city !== undefined) set.city = a.city?.trim() || null;
+      if (a.pincode !== undefined) set.pincode = a.pincode?.trim() || null;
       const data = await hasura(
-        `mutation SetCustomerTax($id: uuid!, $companyId: uuid!, $gstin: String, $address: String, $state: String) {
+        `mutation SetCustomerTax($id: uuid!, $companyId: uuid!, $set: customers_set_input!) {
            update_customers(
              where: { id: { _eq: $id }, company_id: { _eq: $companyId } }
-             _set: { gstin: $gstin, address: $address, state: $state }
+             _set: $set
            ) {
-             returning { id name tax_id payment_terms_days email credit_limit gstin address state }
+             returning { ${CUSTOMER_COLS} }
            }
          }`,
-        {
-          id,
-          gstin: gstin?.trim() || null,
-          address: address?.trim() || null,
-          state: state?.trim() || null,
-          companyId: requireCompanyId(),
-        },
+        { id: a.id, set, companyId: requireCompanyId() },
       );
       if (!data.update_customers.returning.length) throw new Error("Customer not found");
       return mapCustomer(data.update_customers.returning[0]);
@@ -806,6 +854,9 @@ export const resolvers = {
         pan?: string | null;
         address?: string | null;
         state?: string | null;
+        legalName?: string | null;
+        city?: string | null;
+        pincode?: string | null;
         bankAccountName?: string | null;
         bankName?: string | null;
         bankAccountNumber?: string | null;
@@ -818,12 +869,14 @@ export const resolvers = {
       const data = await hasura(
         `mutation SetCompanyTax(
            $id: uuid!, $gstin: String, $pan: String, $address: String, $state: String,
+           $legalName: String, $city: String, $pincode: String,
            $bankAccountName: String, $bankName: String, $bankAccountNumber: String, $bankIfsc: String, $bankSwift: String
          ) {
            update_companies_by_pk(
              pk_columns: { id: $id }
              _set: {
                gstin: $gstin, pan: $pan, address: $address, state: $state,
+               legal_name: $legalName, city: $city, pincode: $pincode,
                bank_account_name: $bankAccountName, bank_name: $bankName,
                bank_account_number: $bankAccountNumber, bank_ifsc: $bankIfsc, bank_swift: $bankSwift
              }
@@ -831,10 +884,13 @@ export const resolvers = {
          }`,
         {
           id: requireCompanyId(),
-          gstin: clean(args.gstin),
+          gstin: clean(args.gstin)?.toUpperCase() ?? null,
           pan: clean(args.pan),
           address: clean(args.address),
           state: clean(args.state),
+          legalName: clean(args.legalName),
+          city: clean(args.city),
+          pincode: clean(args.pincode),
           bankAccountName: clean(args.bankAccountName),
           bankName: clean(args.bankName),
           bankAccountNumber: clean(args.bankAccountNumber),
@@ -843,6 +899,52 @@ export const resolvers = {
         },
       );
       return mapCompanySettings(data.update_companies_by_pk);
+    },
+
+    async setEinvoiceEnabled(_: unknown, { enabled }: { enabled: boolean }) {
+      requireRole("admin");
+      const id = requireCompanyId();
+      if (enabled) {
+        // Fail here, not on the first invoice: the IRP rejects an invoice whose
+        // seller details are incomplete.
+        const cur = await hasura(`query($id: uuid!) { companies_by_pk(id: $id) { ${COMPANY_SEL} } }`, { id });
+        const missing = missingSellerFields(cur.companies_by_pk ?? {});
+        if (missing.length) throw new Error(`Save ${missing.join(", ")} in Settings before enabling e-invoicing`);
+      }
+      const data = await hasura(
+        `mutation($id: uuid!, $on: Boolean!) {
+           update_companies_by_pk(pk_columns: { id: $id }, _set: { einvoice_enabled: $on }) { ${COMPANY_SEL} }
+         }`,
+        { id, on: enabled },
+      );
+      return mapCompanySettings(data.update_companies_by_pk);
+    },
+
+    async saveEinvoiceCredentials(_: unknown, { provider, configJson }: { provider: string; configJson: string }) {
+      requireRole("admin");
+      if (provider !== "nic" && provider !== "gsp") throw new Error('Provider must be "nic" or "gsp"');
+      let config: unknown;
+      try {
+        config = JSON.parse(configJson);
+      } catch {
+        throw new Error("Credentials must be a JSON object");
+      }
+      const isStringMap =
+        config !== null && typeof config === "object" && !Array.isArray(config) &&
+        Object.values(config).every((v) => typeof v === "string");
+      // `{}` is valid for "gsp": it means "use the platform's provider account".
+      if (!isStringMap) throw new Error("Credentials must be a JSON object of strings");
+      await hasura(
+        `mutation($o: einvoice_credentials_insert_input!) {
+           insert_einvoice_credentials_one(
+             object: $o
+             on_conflict: { constraint: einvoice_credentials_pkey, update_columns: [provider, config_encrypted, updated_at] }
+           ) { company_id }
+         }`,
+        { o: { provider, config_encrypted: encryptConfig(config), updated_at: new Date().toISOString() } },
+        { claims: einvoiceClaims(requireCompanyId()) },
+      );
+      return true;
     },
 
     async setReviewQueueStatus(_: unknown, { id, status }: { id: string; status: string }) {

@@ -128,7 +128,7 @@ export function mapVendor(v: any) {
 }
 
 export const COMPANY_SEL = `
-  name aliases signature_data_url logo_data_url gstin pan address state
+  name aliases signature_data_url logo_data_url gstin pan address state legal_name city pincode einvoice_enabled
   bank_account_name bank_name bank_account_number bank_ifsc bank_swift digest_emails
 `;
 
@@ -144,6 +144,10 @@ export function mapCompanySettings(row: any) {
     pan: row.pan ?? null,
     address: row.address ?? null,
     state: row.state ?? null,
+    legalName: row.legal_name ?? null,
+    city: row.city ?? null,
+    pincode: row.pincode ?? null,
+    einvoiceEnabled: row.einvoice_enabled ?? false,
     bankAccountName: row.bank_account_name ?? null,
     bankName: row.bank_name ?? null,
     bankAccountNumber: row.bank_account_number ?? null,
@@ -164,6 +168,9 @@ export function mapCustomer(c: any) {
         gstin: c.gstin ?? null,
         address: c.address ?? null,
         state: c.state ?? null,
+        legalName: c.legal_name ?? null,
+        city: c.city ?? null,
+        pincode: c.pincode ?? null,
         invoices: (c.invoices ?? []).map(mapInvoice),
       }
     : null;
@@ -190,6 +197,9 @@ export function mapInvoice(row: any): any {
     paymentStatus: effectivePayment(row),
     source: row.source,
     template: row.template ?? null,
+    irn: row.irn ?? null,
+    einvoiceStatus: row.einvoice_status ?? null,
+    einvoiceError: row.einvoice_error ?? null,
     daysOverdue: daysOverdue(row),
     vendor: mapVendor(row.vendor),
     purchaseOrder: row.purchaseOrder
@@ -229,7 +239,7 @@ export function mapInvoice(row: any): any {
 export const INVOICE_SEL = `
   id company_id invoice_number description extracted_text direction collection_status
   invoice_date due_date amount tax_amount department
-  approval_status payment_status source template
+  approval_status payment_status source template irn einvoice_status einvoice_error
   vendor { id name tax_id payment_terms_days }
   customer { id name tax_id payment_terms_days email credit_limit }
   purchaseOrder { id po_number amount status department vendor { id name tax_id payment_terms_days } }

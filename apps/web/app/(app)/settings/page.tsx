@@ -2,13 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@apollo/client";
-import { CompanySettingsQuery } from "@/graphql/operations/queries";
-import { UpdateCompanySettingsMutation, UpdateCompanyTaxDetailsMutation } from "@/graphql/operations/mutations";
+import { CompanySettingsQuery, EinvoiceSetupQuery } from "@/graphql/operations/queries";
+import {
+  UpdateCompanySettingsMutation,
+  UpdateCompanyTaxDetailsMutation,
+  SetEinvoiceEnabledMutation,
+  SaveEinvoiceCredentialsMutation,
+} from "@/graphql/operations/mutations";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
-import { Field, TextInput } from "@/components/ui/Field";
+import { Field, Select, TextInput } from "@/components/ui/Field";
 import { ModelStatusPanel } from "@/components/admin/ModelStatusPanel";
 import { ModelDriftPanel } from "@/components/admin/ModelDriftPanel";
 import { RetrainHistoryPanel } from "@/components/admin/RetrainHistoryPanel";
@@ -21,6 +26,9 @@ type TaxField =
   | "pan"
   | "state"
   | "address"
+  | "legalName"
+  | "city"
+  | "pincode"
   | "bankAccountName"
   | "bankName"
   | "bankAccountNumber"
@@ -31,7 +39,10 @@ const TAX_FIELDS: { name: TaxField; label: string; placeholder?: string; bank?: 
   { name: "gstin", label: "GSTIN", placeholder: "29ABCDE1234F1Z5" },
   { name: "pan", label: "PAN", placeholder: "ABCDE1234F" },
   { name: "state", label: "State", placeholder: "Maharashtra" },
-  { name: "address", label: "Address", placeholder: "Street, city, PIN" },
+  { name: "address", label: "Address", placeholder: "Street, area" },
+  { name: "legalName", label: "Legal name (as on GST registration)", placeholder: "Acme Private Limited" },
+  { name: "city", label: "City", placeholder: "Mumbai" },
+  { name: "pincode", label: "Pincode", placeholder: "400001" },
   { name: "bankAccountName", label: "Account holder", bank: true },
   { name: "bankName", label: "Bank name", bank: true },
   { name: "bankAccountNumber", label: "Account number", bank: true },
@@ -45,6 +56,14 @@ export default function SettingsPage() {
   const { data, loading, refetch } = useQuery(CompanySettingsQuery);
   const [update, { loading: saving }] = useMutation(UpdateCompanySettingsMutation);
   const [updateTax, { loading: savingTax }] = useMutation(UpdateCompanyTaxDetailsMutation);
+  // Admin-only on the server, so only ask when the panel is shown.
+  const { data: setup, refetch: refetchSetup } = useQuery(EinvoiceSetupQuery, { skip: !isAdmin });
+  const [setEinvoice, { loading: togglingEinvoice }] = useMutation(SetEinvoiceEnabledMutation);
+  const [einvoiceErr, setEinvoiceErr] = useState<string | null>(null);
+  const [saveCreds, { loading: savingCreds }] = useMutation(SaveEinvoiceCredentialsMutation);
+  const [credsProvider, setCredsProvider] = useState("gsp");
+  const [credsJson, setCredsJson] = useState("");
+  const [credsMsg, setCredsMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
 
   const [name, setName] = useState("");
   const [aliases, setAliases] = useState("");
@@ -84,6 +103,30 @@ export default function SettingsPage() {
       refetch();
     } catch (e) {
       setTaxErr(e instanceof Error ? e.message : "Couldn't save");
+    }
+  }
+
+  async function toggleEinvoice(enabled: boolean) {
+    setEinvoiceErr(null);
+    try {
+      await setEinvoice({ variables: { enabled } });
+      refetch();
+      refetchSetup();
+    } catch (e) {
+      setEinvoiceErr(e instanceof Error ? e.message : "Couldn't update");
+    }
+  }
+
+  async function submitCreds(e: React.FormEvent) {
+    e.preventDefault();
+    setCredsMsg(null);
+    try {
+      await saveCreds({ variables: { provider: credsProvider, configJson: credsJson } });
+      setCredsJson(""); // write-only: never shown again
+      refetchSetup();
+      setCredsMsg({ tone: "ok", text: "Saved (encrypted). It can't be viewed again — paste new values to replace it." });
+    } catch (e) {
+      setCredsMsg({ tone: "bad", text: e instanceof Error ? e.message : "Couldn't save" });
     }
   }
 
@@ -201,6 +244,81 @@ export default function SettingsPage() {
         {taxErr && <Callout tone="bad" className="mt-3 text-xs">{taxErr}</Callout>}
         {taxOk && <Callout tone="ok" className="mt-3 text-xs">{taxOk}</Callout>}
       </Panel>
+
+      {isAdmin && (
+        <Panel title="GST e-invoicing" className="mt-6">
+          <ul className="mb-4 space-y-1 text-sm">
+            {[
+              {
+                done: (setup?.einvoiceSetup.missingSellerFields.length ?? 1) === 0,
+                label: "Company details complete",
+                todo: `Still needed: ${setup?.einvoiceSetup.missingSellerFields.join(", ")}`,
+              },
+              { done: data?.companySettings.einvoiceEnabled ?? false, label: "E-invoicing switched on", todo: "Tick the box below" },
+              {
+                done: setup?.einvoiceSetup.hasCredentials ?? false,
+                label: `IRP credentials saved${setup?.einvoiceSetup.provider ? ` (${setup.einvoiceSetup.provider.toUpperCase()})` : ""}`,
+                todo: "Save them below",
+              },
+            ].map((s) => (
+              <li key={s.label} className={s.done ? "text-ok-fg" : "text-ink-muted"}>
+                {s.done ? "✓" : "○"} {s.label}
+                {!s.done && setup && <span className="text-2xs"> — {s.todo}</span>}
+              </li>
+            ))}
+          </ul>
+          <p className="mb-4 text-2xs text-ink-muted">
+            Also required outside this app: your GSTIN must be e-invoice enabled on the GST portal, and
+            you must create an e-invoice API user there and authorise your provider.
+          </p>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={data?.companySettings.einvoiceEnabled ?? false}
+              disabled={loading || togglingEinvoice}
+              onChange={(e) => toggleEinvoice(e.target.checked)}
+            />
+            <span>
+              Register invoices with the government IRP
+              <span className="block text-2xs text-ink-muted">
+                Required once your annual turnover crosses the e-invoicing threshold. Needs a valid
+                GSTIN, legal name, address, city and pincode saved above.
+              </span>
+            </span>
+          </label>
+          {einvoiceErr && <Callout tone="bad" className="mt-3 text-xs">{einvoiceErr}</Callout>}
+
+          <form onSubmit={submitCreds} className="mt-4 grid max-w-xl gap-3 border-t border-line pt-4">
+            <p className="text-2xs font-medium uppercase tracking-wide text-ink-muted">IRP credentials</p>
+            <Field label="Route">
+              <Select value={credsProvider} onChange={(e) => setCredsProvider(e.target.value)}>
+                <option value="gsp">GST Suvidha Provider (any turnover)</option>
+                <option value="nic">NIC direct (turnover above ₹100 crore)</option>
+              </Select>
+            </Field>
+            <Field label="Credentials (JSON)">
+              <textarea
+                className="w-full rounded-md border border-line bg-surface px-3 py-2 font-mono text-xs"
+                rows={5}
+                value={credsJson}
+                onChange={(e) => setCredsJson(e.target.value)}
+                placeholder={'{"baseUrl": "https://…", "clientId": "…", "clientSecret": "…", "userName": "…", "password": "…"}'}
+              />
+              <p className="mt-1 text-2xs text-ink-muted">
+                Stored encrypted and never shown again. If your provider account is managed for you, save{" "}
+                <code>{"{}"}</code> to use it.
+              </p>
+            </Field>
+            <div className="flex justify-end">
+              <Button type="submit" variant="primary" disabled={savingCreds || !credsJson.trim()}>
+                {savingCreds ? "Saving…" : "Save credentials"}
+              </Button>
+            </div>
+            {credsMsg && <Callout tone={credsMsg.tone} className="text-xs">{credsMsg.text}</Callout>}
+          </form>
+        </Panel>
+      )}
 
       <Panel title="Company logo" className="mt-6">
         <p className="mb-3 text-xs text-ink-muted">

@@ -11,6 +11,10 @@ export interface CompanyBillingCtx {
   pan: string | null;
   address: string | null;
   state: string | null;
+  legal_name: string | null;
+  city: string | null;
+  pincode: string | null;
+  einvoice_enabled: boolean;
   signature_data_url: string | null;
   logo_data_url: string | null;
   bank_account_name: string | null;
@@ -26,13 +30,16 @@ export interface CustomerBillingCtx {
   tax_id: string | null;
   address: string | null;
   state: string | null;
+  legal_name: string | null;
+  city: string | null;
+  pincode: string | null;
 }
 
 export const COMPANY_BILLING_SEL = `
-  name gstin pan address state signature_data_url logo_data_url
+  name gstin pan address state legal_name city pincode einvoice_enabled signature_data_url logo_data_url
   bank_account_name bank_name bank_account_number bank_ifsc bank_swift
 `;
-export const CUSTOMER_BILLING_SEL = `name email gstin tax_id address state`;
+export const CUSTOMER_BILLING_SEL = `name email gstin tax_id address state legal_name city pincode`;
 
 export const emptyCompanyBillingCtx = (): CompanyBillingCtx => ({
   name: "",
@@ -40,6 +47,10 @@ export const emptyCompanyBillingCtx = (): CompanyBillingCtx => ({
   pan: null,
   address: null,
   state: null,
+  legal_name: null,
+  city: null,
+  pincode: null,
+  einvoice_enabled: false,
   signature_data_url: null,
   logo_data_url: null,
   bank_account_name: null,
@@ -48,6 +59,11 @@ export const emptyCompanyBillingCtx = (): CompanyBillingCtx => ({
   bank_ifsc: null,
   bank_swift: null,
 });
+
+/** The IRP wants a GST UQC code, not the free-text display unit. Hours/Days
+ * have no UQC (services), so they're OTH. */
+const UQC: Record<string, string> = { units: "UNT", pieces: "PCS", kg: "KGS" };
+export const uqcFromUnit = (unit?: string | null) => UQC[(unit ?? "").trim().toLowerCase()] ?? "OTH";
 
 export function companyForPdf(c: CompanyBillingCtx) {
   const hasBank = c.bank_account_name || c.bank_name || c.bank_account_number;
@@ -115,6 +131,7 @@ export function lineItemInsertRow(
     unit_price: li.unitPrice,
     line_amount: round(li.quantity * li.unitPrice),
     unit: li.unit || "Units",
+    uqc: uqcFromUnit(li.unit),
     hsn_sac: li.hsnSac ?? null,
     gst_rate: li.gstRate ?? null,
   };

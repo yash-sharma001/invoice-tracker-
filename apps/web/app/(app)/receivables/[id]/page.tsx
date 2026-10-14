@@ -4,7 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "@apollo/client";
 import { InvoiceDetailQuery } from "@/graphql/operations/queries";
-import { SetCollectionStatusMutation, DeleteInvoiceMutation, ResendInvoiceMutation } from "@/graphql/operations/mutations";
+import {
+  SetCollectionStatusMutation,
+  DeleteInvoiceMutation,
+  ResendInvoiceMutation,
+  RetryEinvoiceMutation,
+} from "@/graphql/operations/mutations";
 import { useState, use } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
@@ -39,6 +44,10 @@ export default function ReceivableDetailPage(props: { params: Promise<{ id: stri
   });
   const [resendInvoice, resendState] = useMutation(ResendInvoiceMutation, { onError: () => {} });
   const [resendMsg, setResendMsg] = useState<string | null>(null);
+  const [retryEinvoice, retryState] = useMutation(RetryEinvoiceMutation, {
+    refetchQueries: ["InvoiceDetail", "Invoices"],
+    onError: () => {},
+  });
 
   const inv = data?.invoice;
 
@@ -86,7 +95,8 @@ export default function ReceivableDetailPage(props: { params: Promise<{ id: stri
                     {resendState.loading ? "Resending…" : "Resend invoice"}
                   </Button>
                 )}
-                {can("deleteInvoice") && (
+                {/* A registered e-invoice is a legal document — the DB refuses to delete it. */}
+                {can("deleteInvoice") && !inv.irn && (
                   <Button
                     variant="danger"
                     data-testid="delete-invoice"
@@ -131,6 +141,35 @@ export default function ReceivableDetailPage(props: { params: Promise<{ id: stri
           <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
             <div className="space-y-4">
               <InvoiceSummaryPanel invoiceId={inv.id} description={inv.description} />
+
+              {inv.einvoiceStatus && (
+                <Panel title="GST e-invoice">
+                  {inv.irn ? (
+                    <>
+                      <Badge tone="ok">Registered with IRP</Badge>
+                      <p className="mt-2 break-all text-2xs text-ink-muted">IRN: <span className="tabular">{inv.irn}</span></p>
+                    </>
+                  ) : (
+                    <>
+                      <Badge tone="bad">Not registered — not a valid e-invoice, not sent</Badge>
+                      {inv.einvoiceError && <p className="mt-2 text-xs text-ink-muted">{inv.einvoiceError}</p>}
+                      {can("addInvoices") && inv.einvoiceStatus === "failed" && (
+                        <Button
+                          className="mt-3"
+                          variant="primary"
+                          disabled={retryState.loading}
+                          onClick={() => retryEinvoice({ variables: { id: inv.id } })}
+                        >
+                          {retryState.loading ? "Retrying…" : "Retry registration"}
+                        </Button>
+                      )}
+                      {retryState.error && (
+                        <Callout tone="bad" className="mt-3 text-xs">{retryState.error.message}</Callout>
+                      )}
+                    </>
+                  )}
+                </Panel>
+              )}
 
               <Panel title="Details">
                 <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">

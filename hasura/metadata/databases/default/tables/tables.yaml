@@ -10,3 +10,4 @@
 - "!include public_companies.yaml"
 - "!include public_demo_requests.yaml"
 - "!include public_audit_logs.yaml"
+- "!include public_einvoice_credentials.yaml"

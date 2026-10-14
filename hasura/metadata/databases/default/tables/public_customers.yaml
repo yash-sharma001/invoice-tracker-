@@ -40,6 +40,9 @@ update_permissions:
         - gstin
         - address
         - state
+        - legal_name
+        - city
+        - pincode
       filter: { company_id: { _eq: X-Hasura-Company-Id } }
       check: {}
   - role: company_admin
@@ -49,6 +52,9 @@ update_permissions:
         - gstin
         - address
         - state
+        - legal_name
+        - city
+        - pincode
       filter: { company_id: { _eq: X-Hasura-Company-Id } }
       check: {}
 select_permissions:

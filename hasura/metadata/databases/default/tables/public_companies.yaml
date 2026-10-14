@@ -43,6 +43,9 @@ update_permissions:
         - pan
         - address
         - state
+        - legal_name
+        - city
+        - pincode
         - bank_account_name
         - bank_name
         - bank_account_number
@@ -51,6 +54,8 @@ update_permissions:
       filter: { id: { _eq: X-Hasura-Company-Id } }
       check: {}
   - role: company_admin
+    # einvoice_enabled is admin-only: it switches the company into the IRP
+    # regime, which finance_user shouldn't be able to toggle.
     permission:
       columns:
         - name
@@ -62,6 +67,10 @@ update_permissions:
         - pan
         - address
         - state
+        - legal_name
+        - city
+        - pincode
+        - einvoice_enabled
         - bank_account_name
         - bank_name
         - bank_account_number

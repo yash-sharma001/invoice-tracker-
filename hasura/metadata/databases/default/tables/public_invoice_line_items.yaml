@@ -19,6 +19,7 @@ insert_permissions:
         - unit_price
         - line_amount
         - unit
+        - uqc
         - hsn_sac
         - gst_rate
   - role: company_admin
@@ -34,6 +35,7 @@ insert_permissions:
         - unit_price
         - line_amount
         - unit
+        - uqc
         - hsn_sac
         - gst_rate
 select_permissions:

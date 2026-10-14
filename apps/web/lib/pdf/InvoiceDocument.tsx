@@ -52,6 +52,8 @@ export interface InvoiceDocumentData {
   tax: number;
   total: number;
   signatureDataUrl?: string | null;
+  /** IRP registration result; `qrDataUrl` is the signed QR rendered as an image. */
+  einvoice?: { irn: string; ackNo: string; ackDate: string; qrDataUrl: string } | null;
 }
 
 const ACCENT: Record<Template, string> = {
@@ -348,12 +350,31 @@ export function InvoiceDocument(data: InvoiceDocumentData) {
     </View>
   );
 
-  const notes = data.notes ? (
-    <View style={styles.notes}>
-      <Text style={styles.label}>Notes</Text>
-      <Text>{data.notes}</Text>
+  // Present only for an invoice the IRP has registered: the IRN + the
+  // IRP-signed QR are what make it a valid e-invoice.
+  const einvoiceBlock = data.einvoice ? (
+    <View style={[styles.notes, { flexDirection: "row", alignItems: "center" }]} wrap={false}>
+      <Image src={data.einvoice.qrDataUrl} style={{ width: 80, height: 80 }} />
+      <View style={{ marginLeft: 10, flex: 1 }}>
+        <Text style={styles.label}>IRN</Text>
+        <Text style={{ fontSize: 7 }}>{data.einvoice.irn}</Text>
+        <Text style={[styles.label, { marginTop: 4 }]}>Ack no. / date</Text>
+        <Text style={{ fontSize: 8 }}>{data.einvoice.ackNo} · {data.einvoice.ackDate}</Text>
+      </View>
     </View>
   ) : null;
+
+  const notes = (
+    <>
+      {einvoiceBlock}
+      {data.notes ? (
+        <View style={styles.notes}>
+          <Text style={styles.label}>Notes</Text>
+          <Text>{data.notes}</Text>
+        </View>
+      ) : null}
+    </>
+  );
 
   // Sidebar keeps bank + signature in the sidebar itself, so the main column
   // only needs the notes block — bottomRow is shared by the other 4 templates.
